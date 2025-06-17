@@ -1,0 +1,241 @@
+Release v4.44.0
+@ArthurZucker ArthurZucker released this Aug 7, 2024
+· 2797 commits to main since this release
+ v4.44.0
+ 984bc11
+Release v4.44.0: End to end compile generation!!! Gemma2 (with assisted decoding), Codestral (Mistral for code), Nemotron, Efficient SFT training, CPU Offloaded KVCache, torch export for static cache
+This release comes a bit early in our cycle because we wanted to ship important and requested models along with improved performances for everyone!
+
+All of these are included with examples in the awesome https://github.com/huggingface/local-gemma repository! 🎈 We tried to share examples of what is now possible with all the shipped features! Kudos to @gante, @sanchit-gandhi and @xenova
+
+💥 End-to-end generation compile
+Generate: end-to-end compilation #30788 by @gante: model.generate now supports compiling! There are a few limitations, but here is a small snippet:
+
+from transformers import AutoModelForCausalLM, AutoTokenizer
+import torch
+import copy
+
+model = AutoModelForCausalLM.from_pretrained(
+    "meta-llama/Meta-Llama-3.1-8B", torch_dtype=torch.bfloat16, device_map="auto"
+)
+tokenizer = AutoTokenizer.from_pretrained("meta-llama/Meta-Llama-3.1-8B")
+
+# compile generate
+compiled_generate = torch.compile(model.generate, fullgraph=True, mode="reduce-overhead")
+
+# compiled generate does NOT accept parameterization except a) model inputs b) a generation config
+generation_config = copy.deepcopy(model.generation_config)
+generation_config.pad_token_id = model.config.eos_token_id
+
+model_inputs = tokenizer(["Write a poem about the market crashing in summer"], return_tensors="pt")
+model_inputs = model_inputs.to(model.device)
+output_compiled = compiled_generate(**model_inputs, generation_config=generation_config)
+print(output_compiled)
+⚡ 3 to 5x compile speedup (compilation time 👀 not runtime)
+3-5x faster torch.compile forward compilation for autoregressive decoder models #32227* by @fxmarty .
+As documented on the PR, this makes the whole generation a lot faster when you re-use the cache!
+You can see this when you run model.forward = torch.compile(model.forward, mode="reduce-overhead", fullgraph=True)
+🪶 Offloaded KV cache: offload the cache to CPU when you are GPU poooooor 🚀
+Offloaded KV Cache #31325* by @n17s : you just have to set cache_implementation="offloaded" when calling from_pretrained or using this:
+from transformers import GenerationConfig
+gen_config = GenerationConfig(cache_implementation="offloaded", # other generation options such as num_beams=4,num_beam_groups=2,num_return_sequences=4,diversity_penalty=1.0,max_new_tokens=50,early_stopping=True)
+outputs = model.generate(inputs["input_ids"],generation_config=gen_config)
+📦 Torch export for static cache
+pytorch team gave us a great gift: you can now use torch.export directly compatible with Executorch! Find examples here.
+
+Make static cache compatible with torch.export #32168 by @guangy10
+This also unlocks support for prompt reuse:
+
+import os, torch, copy
+from transformers import AutoModelForCausalLM, AutoTokenizer, DynamicCache
+device = "cuda"
+ckpt = "meta-llama/Meta-Llama-3.1-8B-Instruct"
+
+INITIAL_PROMPT = "From now on, you are going to answer all my questions with historical details. Make sure to always add a bit of french here and there, for style."
+
+model = AutoModelForCausalLM.from_pretrained(ckpt, torch_dtype=torch.float16)
+model.to(device)
+tokenizer = AutoTokenizer.from_pretrained(ckpt)
+
+prompt_cache = DynamicCache()
+inputs = tokenizer(INITIAL_PROMPT, return_tensors="pt").to("cuda")
+prompt_cache = model(**inputs, past_key_values = prompt_cache).past_key_values
+
+prompt = "Why are french people obsessed with french?"
+new_inputs = tokenizer(INITIAL_PROMPT + prompt, return_tensors="pt").to("cuda")
+past_key_values = copy.deepcopy(prompt_cache)
+outputs = model.generate(**new_inputs, past_key_values=past_key_values,max_new_tokens=20) 
+response = tokenizer.batch_decode(outputs)[0]
+print(response)
+
+prompt = "What is the best city to swim in?"
+new_inputs = tokenizer(INITIAL_PROMPT + prompt, return_tensors="pt").to("cuda")
+outputs = model.generate(**new_inputs, past_key_values=copy.deepcopy(prompt_cache),max_new_tokens=20) 
+response = tokenizer.batch_decode(outputs)[0]
+Gemma2: assisted decoding
+Gemma 2: support assisted generation #32357 by @gante
+
+We now have a 2B Gemma 2 model -- a perfect sidekick for the 27B with assisted generation. We've enabled assisted generation in gemma 2, with a caveat: assisted generation currently requires the use of a windowless cache (as opposed to the default cache for gemma 2), so you might observe some output mismatch on long sequences. Read more about it here.
+
+# transformers assisted generation reference: 
+# https://huggingface.co/docs/transformers/main/en/llm_optims#speculative-decoding 
+from transformers import AutoModelForCausalLM, AutoTokenizer
+import torch
+
+# we DON’T recommend using the 9b model with the 2b model as its assistant
+assistant_model_name = 'google/gemma-2-2b-it'
+reference_model_name = 'google/gemma-2-27b-it'
+
+tokenizer = AutoTokenizer.from_pretrained(reference_model_name)
+model = AutoModelForCausalLM.from_pretrained(
+   reference_model_name, device_map='auto', torch_dtype=torch.bfloat16
+)
+assistant_model = AutoModelForCausalLM.from_pretrained(
+   assistant_model_name, device_map='auto', torch_dtype=torch.bfloat16
+)
+
+model_inputs = tokenizer("Einstein's theory of relativity states", return_tensors="pt").to(model.device)
+generation_options = {
+   "assistant_model": assistant_model,
+   "do_sample": True,
+   "temperature": 0.7,
+   "max_new_tokens": 64,
+}
+
+outputs = model.generate(**model_inputs, **generation_options)
+tokenizer.batch_decode(outputs, skip_special_tokens=True)
+Nemotron support
+image
+
+Nemotron-4-340B-Instruct is a large language model (LLM) that can be used as part of a synthetic data generation pipeline to create training data that helps researchers and developers build their own LLMs. It is a fine-tuned version of the Nemotron-4-340B-Base model, optimized for English-based single and multi-turn chat use-cases. It supports a context length of 4,096 tokens.
+
+The conversion script should be able to cover Minitron and Nemotron, thanks and kudos to @suiyoubi. See:
+
+Add Nemotron HF Support #31699
+Codestral support
+image
+
+Codestral is trained on a diverse dataset of 80+ programming languages, including the most popular ones, such as Python, Java, C, C++, JavaScript, and Bash. It also performs well on more specific ones like Swift and Fortran. This broad language base ensures Codestral can assist developers in various coding environments and projects.
+
+Codestral saves developers time and effort: it can complete coding functions, write tests, and complete any partial code using a fill-in-the-middle mechanism. Interacting with Codestral will help level up the developer’s coding game and reduce the risk of errors and bugs.
+
+It's mamba2 architecture, was a bit of a pain to remove all einops but hope we made it better for everyone!
+
+Add codestral mamba2 #32080 by @molbap and @vasqu
+Breaking changes:
+We removed the chat template in the code, they should all be on the hub!
+
+🚨 No more default chat templates #31733 by @Rocketknight1
+Long-form decoding for whisper, even faster:
+Our great @sanchit-gandhi worked on porting the recent compile upgrades to long form decoding in
+
+[whisper] compile compatibility with long-form decoding #31772
+What's Changed
+Enhancing SFT Training Efficiency Using Packing and FlashAttention2 with Position IDs by @RhuiDih in #31629
+Updated ruff to the latest version by @Sai-Suraj-27 in #31926
+fix by @gante in #32162
+fix: Fixed an if condition that is always evaluating to true by @Sai-Suraj-27 in #32160
+[docs] change temperature to a positive value by @faaany in #32077
+adds: extra_repr() to MambaRMSNorm to include hidden size / size of weights in the layer by @rohitdwivedula in #32171
+fix: default value reflects the runtime environment variables rather than the ones present at import time. by @junrae6454 in #32153
+Update qwen2.md by @ArtificialZeng in #32108
+Remove conversational pipeline tests by @amyeroberts in #32099
+RoPE: relaxed rope validation by @gante in #32182
+let's not warn when someone is running a forward by @ArthurZucker in #32176
+Fix resize embedding with Deepspeed by @zucchini-nlp in #32192
+Fix float8_e4m3fn in modeling_utils by @SunMarc in #32193
+Support dequantizing GGUF FP16 format by @PenutChen in #31783
+🚨 No more default chat templates by @Rocketknight1 in #31733
+fix: Replaced deprecated unittest method with the correct one by @Sai-Suraj-27 in #32198
+[whisper] fix short-form output type by @sanchit-gandhi in #32178
+remove unnecessary guard code related with pytorch versions 1.4.2 ~ 1.7.0 by @statelesshz in #32210
+Update question_answering.py by @avlewis in #32208
+[BigBird Pegasus] set _supports_param_buffer_assignment to False by @kashif in #32222
+[warnings] fix E721 warnings by @kashif in #32223
+Follow up for #31973 by @ydshieh in #32025
+translate philosophy.md to chinese by @statelesshz in #32177
+Allow a specific microphone to be used by the ffmpeg audio pipeline utility functions. Default to using the currently active microphone on Mac by @jrhe in #31846
+Fix code snippet for Grounding DINO by @qubvel in #32229
+Generation: stop at eos for assisted decoding by @zucchini-nlp in #31301
+Llava: generate without images by @zucchini-nlp in #32183
+Resize embeds with DeepSpeed by @zucchini-nlp in #32214
+don't log base model architecture in wandb if log model is false by @joaonadkarni in #32143
+Refactor: Removed un-necessary object base class by @Sai-Suraj-27 in #32230
+Adds: extra_repr for RMSNorm layers in most models by @rohitdwivedula in #32204
+Add check for target_sizes is None in post_process_image_guided_detection for owlv2 by @catalys1 in #31934
+[tests] fix static cache implementation is not compatible with attn_implementation==flash_attention_2 by @faaany in #32039
+Flash-Attn: fix generation when no attention mask or no pading by @zucchini-nlp in #32241
+More flexible trigger condition by @ydshieh in #32251
+Llama 3.1: replace for loop by tensor ops at inv_freq initialization by @gante in #32244
+🚨 Bloom support for cache class by @zucchini-nlp in #31445
+Upload new model failure report to Hub by @ydshieh in #32264
+Optimize t5 tokenize logic to avoid redundant calls by @leejet in #32270
+fix: Fixed wrong argument passed to convert_blip_checkpoint function call by @Sai-Suraj-27 in #32262
+Repo: remove exceptions in check_docstrings by @gante in #32259
+make p_mask a numpy array before passing to select_starts_ends by @faaany in #32076
+fix(docs): Fixed a link in docs by @Sai-Suraj-27 in #32274
+Generate: end-to-end compilation by @gante in #30788
+Whisper tokenizer word level timestamps by @kamilakesbi in #32197
+[pipeline] fix padding for 1-d tensors by @sanchit-gandhi in #31776
+Make static cache compatible with torch.export by @guangy10 in #32168
+Add stream messages from agent run for gradio chatbot by @aymeric-roucher in #32142
+use torch 2.4 in 2 CI jobs by @ydshieh in #32302
+Docs: fix GaLore optimizer code example by @gil2rok in #32249
+Fix GGUF dequantize for gguf==0.9.1 by @Isotr0py in #32298
+Cast epochs_trained to int when resuming training by @teddy-f-47 in #32286
+feat(ci): set fetch-depth: 0 in trufflehog checkout step by @McPatate in #31663
+Fix M4T for ASR pipeline by @ylacombe in #32296
+Docs: formatting nits by @gante in #32247
+Alternative agent plan by @plaggy in #32295
+fix: Added missing raise keyword for few exceptions by @Sai-Suraj-27 in #32333
+fixes to properly shard FSDP across cpu and meta for cpu_efficient_loading for prequantized 4bit by @winglian in #32276
+fixes #32329 : The Torch code is correct - to get an average of 10% o… by @fkrasnov2 in #32335
+Repo checks: skip docstring checks if not in the diff by @gante in #32328
+Fix slow GemmaTokenizer and improve SPM slow -> fast conversion process by @xenova in #32191
+LLaVA-NeXT: fix anyres shapes by @zucchini-nlp in #32314
+Gemma2 and flash-attention by @zucchini-nlp in #32188
+Llama 3.1: Fix incorrect inv_freq assignment by @gante in #32330
+[Idefics2] - Fix FA2 call for Perceiver layer by @amyeroberts in #32275
+Gemma 2: support assisted generation by @gante in #32357
+Fix error when streaming to gradio with non-string tool arguments by @aymeric-roucher in #32360
+3-5x faster torch.compile forward compilation for autoregressive decoder models by @fxmarty in #32227
+
+fix: Fixed staticmethods with self as first argument by @Sai-Suraj-27 in #32361
+fix: warmup_steps check for training_args by @Ricardo-L-C in #32236
+LLaVa: add cache class attribute by @zucchini-nlp in #32278
+[enc-dec cache] fix bug in indexing by @sanchit-gandhi in #32370
+[whisper] compile compatibility with long-form decoding by @sanchit-gandhi in #31772
+Remove size check between attn_weights and kv_seq_len for phi3 by @helunwencser in #32339
+add missing attribute _supports_param_buffer_assignment for gpt-j. by @nv-guomingz in #32359
+Check device map for saving tokenizer config on TPU (fix for issue #31971) by @ayukh in #32043
+update clean_up_tokenization_spaces warning by @itazap in #32371
+Empty list in defaults for LLaMA special tokens during weights conversion by @ViktorooReps in #32342
+Fix conflicting key in init kwargs in PreTrainedTokenizerBase by @OmarManzoor in #31233
+Offloaded KV Cache by @n17s in #31325
+Docker: add speech dep to the consistency docker image by @gante in #32374
+Fixed Hybrid Cache Shape Initialization. by @OsamaS99 in #32163
+Yell at the user if zero-3 init wasn't performed, but expected to have been done by @muellerzr in #32299
+Update docs by @zucchini-nlp in #32368
+RoPE: Add numerical tests ✨ by @gante in #32380
+[generate] only require an attention mask for mps with torch<2.4 by @sanchit-gandhi in #32367
+fix: (issue #32124) Exception raised when running transformers/examples/flax/language-modeling/t5_tokenizer_model.py. by @fshp971 in #32157
+MixtralFlashAttention2: put "plus 1" inside parentheses when calculating rotary_seq_len, allowing None position_ids input. by @Luke20000429 in #31500
+Bump keras from 2.8.0 to 2.13.1 in /examples/research_projects/decision_transformer by @dependabot in #32393
+fix: SeamlessM4TFeatureExtractor stride remainder by @TechInterMezzo in #32088
+Phi3 tests: fix typing for Python 3.8 by @zucchini-nlp in #32388
+#32184 save total_vocab_size by @itazap in #32240
+add values for neftune by @nbroad1881 in #32399
+Fix documentation references to google/bit-50 model by @JuanFKurucz in #32407
+Persist embedding type of BART and mBART models after resize by @AbdiHaryadi in #32242
+fix: Updated test_embeded_special_tokens for luke and mluke models by @Sai-Suraj-27 in #32413
+Respect the config's attn_implementation if set by @amyeroberts in #32383
+Fix documentation links and code reference to model llava-next by @JuanFKurucz in #32434
+Cache: create docs by @zucchini-nlp in #32150
+Llava: fix checkpoint_doc by @RUFFY-369 in #32458
+add the missing flash attention test marker by @faaany in #32419
+Update kwargs validation for preprocess with decorator by @qubvel in #32024
+Fix get large model config for Switch Transformer encoder only tester by @JuanFKurucz in #32438
+Dependencies: fix typo by @gante in #32389
+Add Nemotron HF Support by @suiyoubi in #31699
+Generate: fix end to end compilation by @gante in #32465
+Add codestral mamba2 by @molbap in #32080
