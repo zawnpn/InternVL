@@ -35,7 +35,7 @@ accelerate launch \
   --conv_style "internvl2_5" \
   --use_fast_tokenizer False \
   --output_dir ${OUTPUT_DIR} \
-  --meta_path "/share/zwp/DATA/coco/internvl-pt/coco_caption.json" \
+  --meta_path "/share/zwp/DATA/intern-motion/pt_debug_meta.json" \
   --overwrite_output_dir True \
   --force_image_size 448 \
   --down_sample_ratio 0.5 \

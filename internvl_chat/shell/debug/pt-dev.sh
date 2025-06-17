@@ -1,11 +1,11 @@
 set -x
 
-export NCCL_IB_DISABLE=0
-# export NCCL_IB_HCA="mlx5_1,mlx5_2,mlx5_3,mlx5_4"
-# export NCCL_IB_HCA="mlx5"
-# export NCCL_P2P_DISABLE=1
-# export NCCL_DEBUG=INFO
-export PDSH_SSH_ARGS_APPEND="-p52022"
+GPUS=${GPUS:-8}
+
+
+export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+export MASTER_PORT=34229
+export TF_CPP_MIN_LOG_LEVEL=3
 export LAUNCHER=pytorch
 
 TRAIN_VER=$1
@@ -27,8 +27,12 @@ fi
 # ViT Drop Path: 0.0
 # Weight Decay: 0.01
 # Epoch: None
-accelerate launch \
-  --config_file "shell/debug/config-1.yaml" \
+torchrun \
+  --nnodes=1 \
+  --node_rank=0 \
+  --master_addr=127.0.0.1 \
+  --nproc_per_node=${GPUS} \
+  --master_port=${MASTER_PORT} \
   internvl/train/internvl_chat_pretrain.py \
   --vision_path "/share/zwp/Model/InternVL/InternViT-300M-448px-V2_5" \
   --llm_path "/share/zwp/Model/Qwen/Qwen2.5-0.5B-Instruct" \
@@ -40,13 +44,15 @@ accelerate launch \
   --force_image_size 448 \
   --down_sample_ratio 0.5 \
   --drop_path_rate 0.0 \
+  --min_num_frame 8 \
+  --max_num_frame 32 \
   --freeze_llm True \
   --freeze_mlp False \
   --freeze_backbone True \
   --vision_select_layer -1 \
   --dataloader_num_workers 8 \
   --bf16 True \
-  --num_train_epochs 1 \
+  --max_steps 100000 \
   --per_device_train_batch_size 1 \
   --gradient_accumulation_steps 1 \
   --save_strategy "steps" \
@@ -65,4 +71,15 @@ accelerate launch \
   --use_thumbnail True \
   --ps_version 'v2' \
   --report_to "tensorboard" \
+  --use_packed_ds False \
+  --num_images_expected 48 \
+  --max_packed_tokens 16384 \
+  --max_buffer_size 20 \
+  --log_freq 1000 \
+  --strict_mode False \
+  --replacement False \
+  --allow_overflow False \
+  --remove_unused_columns False \
+  --loss_reduction "square" \
+  --loss_reduction_all_gather True \
   2>&1 | tee -a "${OUTPUT_DIR}/training_log.txt"
