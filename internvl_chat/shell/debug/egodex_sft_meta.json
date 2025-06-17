@@ -1,0 +1,74 @@
+{
+    "chunk_motion_generation": 
+    {
+      "root": "/share/dataset/egodex/sft_data",
+      "annotation": "/share/dataset/egodex/sft_data/v1.3/chunk_instruction_to_motion_sequence.jsonl",
+      "data_augment": false,
+      "repeat_time": 0.1,
+      "length": 963793
+    },
+    "second_motion_generation": 
+    {
+      "root": "/share/dataset/egodex/sft_data",
+      "annotation": "/share/dataset/egodex/sft_data/v1.3/general_frame_instruction_to_motion_per_second.jsonl",
+      "data_augment": false,
+      "repeat_time": 0.01,
+      "length": 18349788
+    },
+    "chunk_motion_multiturn_generation": 
+    {
+      "root": "/share/dataset/egodex/sft_data",
+      "annotation": "/share/dataset/egodex/sft_data/v1.3/general_instruction_frame_to_per_second_instruction_motion.jsonl",
+      "data_augment": false,
+      "repeat_time": 0.1,
+      "length": 959903
+    },
+    "clip_motion_generation": 
+    {
+      "root": "/share/dataset/egodex/sft_data",
+      "annotation": "/share/dataset/egodex/sft_data/v1.3/frame_continuous_instruction_to_motion_sequence.jsonl",
+      "data_augment": false,
+      "repeat_time": 0.01,
+      "length": 14964189
+    },
+    "chunk_motion_description": 
+    {
+      "root": "/share/dataset/egodex/sft_data",
+      "annotation": "/share/dataset/egodex/sft_data/v1.3/frame_motion_sequence_to_summary.jsonl",
+      "data_augment": false,
+      "repeat_time": 0.1,
+      "length": 306971
+    },
+    "clip_motion_description":
+    {
+      "root": "/share/dataset/egodex/sft_data",
+      "annotation": "/share/dataset/egodex/sft_data/v1.3/frame_continuous_motion_to_descriptions.jsonl",
+      "data_augment": false,
+      "repeat_time": 0.1,
+      "length": 10472264
+    },
+    "chunk_motion_multiturn_description": 
+    {
+      "root": "/share/dataset/egodex/sft_data",
+      "annotation": "/share/dataset/egodex/sft_data/v1.3/multi_turn_frame_motion_to_per_second_description.jsonl",
+      "data_augment": false,
+      "repeat_time": 0.1,
+      "length": 655323
+    },
+    "chunk_motion_sequence_modeling": 
+    {
+      "root": "/share/dataset/egodex/sft_data",
+      "annotation": "/share/dataset/egodex/sft_data/v1.3/frame_first_part_motion_to_second_part_motion.jsonl",
+      "data_augment": false,
+      "repeat_time": 0.05,
+      "length": 1764129
+    },
+    "chunk_motion_sequence_future_prediction": 
+    {
+      "root": "/share/dataset/egodex/sft_data",
+      "annotation": "/share/dataset/egodex/sft_data/v1.3/history_motion_sequence_frame_to_future_motion_sequence.jsonl",
+      "data_augment": false,
+      "repeat_time": 0.05,
+      "length": 1764129
+    }
+}

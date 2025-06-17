@@ -9,6 +9,7 @@ import torch
 import transformers
 from torch.utils.data import DataLoader
 from transformers.trainer import is_datasets_available, seed_worker
+from functools import partial
 
 
 def get_train_dataloader(self) -> DataLoader:
@@ -41,7 +42,9 @@ def get_train_dataloader(self) -> DataLoader:
     if not isinstance(train_dataset, torch.utils.data.IterableDataset):
         dataloader_params['sampler'] = self._get_train_sampler()
         dataloader_params['drop_last'] = self.args.dataloader_drop_last
-        dataloader_params['worker_init_fn'] = seed_worker
+        # dataloader_params['worker_init_fn'] = seed_worker
+        dataloader_params['worker_init_fn'] = partial(
+                seed_worker, num_workers=self.args.dataloader_num_workers, rank=self.args.process_index)
 
     if self.args.use_packed_ds:
         return DataLoader(train_dataset, **dataloader_params)

@@ -46,7 +46,11 @@ class InternVLChatConfig(PretrainedConfig):
 
         if llm_config is None:
             # TODO: There might still be a bug in transformers version 4.44 and above.
-            llm_config = {'architectures': ['']}
+            # llm_config = {'architectures': ['']}
+            # default_architecture = ''
+            default_architecture = 'Qwen2ForCausalLM'
+            # default_architecture = 'Qwen3ForCausalLM'
+            llm_config = {'architectures': [default_architecture]}
             logger.info('llm_config is None. Initializing the LlamaConfig config with default values (`LlamaConfig`).')
 
         self.vision_config = InternVisionConfig(**vision_config)
