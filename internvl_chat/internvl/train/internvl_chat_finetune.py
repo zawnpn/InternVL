@@ -879,6 +879,7 @@ def main():
         # replace_internlm2_attention_class()
         # replace_qwen2_attention_class()
         from internvl.patch import qwen2_packed_training_patch
+        from internvl.patch import qwen3_packed_training_patch
         # replace_phi3_attention_class()
         # replace_llama_attention_class()
 

@@ -8,7 +8,7 @@ import copy
 
 from internvl.model.internlm2.configuration_internlm2 import InternLM2Config
 from internvl.model.phi3.configuration_phi3 import Phi3Config
-from transformers import AutoConfig, LlamaConfig, Qwen2Config
+from transformers import AutoConfig, LlamaConfig, Qwen2Config, Qwen3Config
 from transformers.configuration_utils import PretrainedConfig
 from transformers.utils import logging
 
@@ -48,8 +48,8 @@ class InternVLChatConfig(PretrainedConfig):
             # TODO: There might still be a bug in transformers version 4.44 and above.
             # llm_config = {'architectures': ['']}
             # default_architecture = ''
-            default_architecture = 'Qwen2ForCausalLM'
-            # default_architecture = 'Qwen3ForCausalLM'
+            # default_architecture = 'Qwen2ForCausalLM'
+            default_architecture = 'Qwen3ForCausalLM'
             llm_config = {'architectures': [default_architecture]}
             logger.info('llm_config is None. Initializing the LlamaConfig config with default values (`LlamaConfig`).')
 
@@ -62,6 +62,8 @@ class InternVLChatConfig(PretrainedConfig):
             self.llm_config = Phi3Config(**llm_config)
         elif llm_config['architectures'][0] == 'Qwen2ForCausalLM':
             self.llm_config = Qwen2Config(**llm_config)
+        elif llm_config['architectures'][0] == 'Qwen3ForCausalLM':
+            self.llm_config = Qwen3Config(**llm_config)
         else:
             raise ValueError('Unsupported architecture: {}'.format(llm_config['architectures'][0]))
         self.use_backbone_lora = use_backbone_lora

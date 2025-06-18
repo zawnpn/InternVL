@@ -923,6 +923,7 @@ def main():
         # replace_internlm2_attention_class()
         # replace_qwen2_attention_class()
         from internvl.patch import qwen2_packed_training_patch
+        from internvl.patch import qwen3_packed_training_patch
         # replace_phi3_attention_class()
         # replace_llama_attention_class()
 
@@ -1081,7 +1082,10 @@ def main():
             loss_reduction_all_gather=data_args.loss_reduction_all_gather,
         )
     else:
-        collator = concat_pad_data_collator
+        collator = partial(
+            concat_pad_data_collator,
+            pad_id=tokenizer.pad_token_id,
+        )
 
     trainer = Trainer(
         model=model,
